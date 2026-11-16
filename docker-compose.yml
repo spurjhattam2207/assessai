@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: assessai
+      POSTGRES_PASSWORD: assessai
+      POSTGRES_DB: assessai
+    ports:
+      - "5432:5432"
+    volumes:
+      - assessai_pg:/var/lib/postgresql/data
+
+volumes:
+  assessai_pg:

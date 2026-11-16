@@ -1,0 +1,223 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  EDUCATOR
+  STUDENT
+}
+
+enum Audience {
+  JEE
+  UPSC
+  COLLEGE
+}
+
+enum AssessmentStatus {
+  DRAFT
+  PUBLISHED
+  CLOSED
+}
+
+enum QuestionType {
+  SINGLE_MCQ
+  MULTI_MCQ
+  NUMERICAL
+  SHORT_ANSWER
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum AttemptStatus {
+  IN_PROGRESS
+  SUBMITTED
+  TIMED_OUT
+}
+
+enum GenerationStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+}
+
+enum AccessMode {
+  PUBLIC_LINK
+  SIGNED_IN
+}
+
+model User {
+  id            String   @id @default(cuid())
+  name          String
+  email         String   @unique
+  passwordHash  String
+  role          Role
+  isDemo        Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  profile       UserProfile?
+  assessments   Assessment[]
+  attempts      AssessmentAttempt[]
+  notes         QuestionNote[]
+  generationJobs GenerationJob[]
+  uploads       UploadedFile[]
+  grades        ManualGrade[]
+}
+
+model UserProfile {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  audience    Audience
+  institution String?
+  interests   String[]
+}
+
+model Assessment {
+  id                String           @id @default(cuid())
+  creatorId         String
+  creator           User             @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  title             String
+  description       String           @default("")
+  audience          Audience
+  subject           String
+  topics            String[]
+  difficulty        Difficulty       @default(MEDIUM)
+  durationMinutes   Int
+  totalMarks        Int              @default(0)
+  negativeMarking   Boolean          @default(false)
+  instructions      String           @default("")
+  status            AssessmentStatus @default(DRAFT)
+  accessMode        AccessMode       @default(SIGNED_IN)
+  accessCode        String           @unique
+  publishedAt       DateTime?
+  version           Int              @default(1)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  questions         Question[]
+  attempts          AssessmentAttempt[]
+  jobs              GenerationJob[]
+}
+
+model Question {
+  id             String       @id @default(cuid())
+  assessmentId   String
+  assessment     Assessment   @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  position       Int
+  type           QuestionType
+  prompt         String
+  options        Json
+  correctAnswer  Json
+  explanation    String       @default("")
+  topic          String
+  difficulty     Difficulty   @default(MEDIUM)
+  marks          Float
+  negativeMarks  Float        @default(0)
+  tolerance      Float?
+  flagForReview  Boolean      @default(false)
+  generated      Boolean      @default(false)
+  sourceRef      String?
+  responses      QuestionResponse[]
+  notes          QuestionNote[]
+}
+
+model AssessmentAttempt {
+  id                String        @id @default(cuid())
+  assessmentId      String
+  assessment        Assessment    @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  studentId         String
+  student           User          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  startedAt         DateTime      @default(now())
+  submittedAt       DateTime?
+  status            AttemptStatus @default(IN_PROGRESS)
+  score             Float?
+  percentage        Float?
+  correctCount      Int?
+  incorrectCount    Int?
+  unansweredCount   Int?
+  awaitingReviewCount Int?
+  totalTimeSeconds  Int?
+  snapshot          Json
+  responses         QuestionResponse[]
+  notes             QuestionNote[]
+
+  @@unique([assessmentId, studentId])
+}
+
+model QuestionResponse {
+  id               String             @id @default(cuid())
+  attemptId        String
+  attempt          AssessmentAttempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  questionId       String
+  question         Question           @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  response         Json?
+  isCorrect        Boolean?
+  awaitingReview   Boolean            @default(false)
+  marksAwarded     Float              @default(0)
+  timeSpentSeconds Int                @default(0)
+  markedForReview  Boolean            @default(false)
+  updatedAt        DateTime           @updatedAt
+  grade            ManualGrade?
+
+  @@unique([attemptId, questionId])
+}
+
+model QuestionNote {
+  id         String             @id @default(cuid())
+  studentId  String
+  student    User               @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  attemptId  String
+  attempt    AssessmentAttempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  questionId String
+  question   Question           @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  noteText   String
+  updatedAt  DateTime           @updatedAt
+
+  @@unique([studentId, attemptId, questionId])
+}
+
+model GenerationJob {
+  id           String           @id @default(cuid())
+  educatorId   String
+  educator     User             @relation(fields: [educatorId], references: [id], onDelete: Cascade)
+  assessmentId String?
+  assessment   Assessment?      @relation(fields: [assessmentId], references: [id], onDelete: SetNull)
+  inputConfig  Json
+  sourceFileId String?
+  sourceFile   UploadedFile?    @relation(fields: [sourceFileId], references: [id], onDelete: SetNull)
+  status       GenerationStatus @default(PENDING)
+  error        String?
+  usedFixture  Boolean          @default(false)
+  createdAt    DateTime         @default(now())
+}
+
+model UploadedFile {
+  id                   String          @id @default(cuid())
+  ownerId              String
+  owner                User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  filename             String
+  mimeType             String
+  sizeBytes            Int
+  extractedText        String?
+  extractedTextStatus  String          @default("pending")
+  jobs                 GenerationJob[]
+  createdAt            DateTime        @default(now())
+}
+
+model ManualGrade {
+  id            String           @id @default(cuid())
+  responseId    String           @unique
+  response      QuestionResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  educatorId    String
+  educator      User             @relation(fields: [educatorId], references: [id], onDelete: Cascade)
+  marksAwarded  Float
+  feedback      String           @default("")
+  gradedAt      DateTime         @default(now())
+}
